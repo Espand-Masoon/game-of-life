@@ -30,10 +30,14 @@ fn main() {
     const CELL_COLOR: Color = Color::Yellow;
     const BACKGROUND_COLOR: Color = Color::Black;
 
-    // Ignore first row and column for easier 1-based indexing
+    // Global variables
+    let mut terminal_width = size().unwrap().0;
+    let mut terminal_height = size().unwrap().1;
+
+    // Create a matrix to represent the terminal sheet
     let mut cells: Vec<Vec<bool>> = vec![
-        vec![false; (size().unwrap().1 + 1).into()];
-        (size().unwrap().0 + 1).into()
+        vec![false; (terminal_height).into()];
+        (terminal_width).into()
     ];
 
     // ToDo
@@ -51,13 +55,23 @@ fn main() {
     );
     stdout.flush();
 
-    // ToDo
+    // Print help ribbon at bottom of pane
+    queue!(
+        stdout,
+        cursor::MoveTo(0, terminal_height - 1),
+        Print("q: quit"),
+    );
+    stdout.flush();
+
+
+    // ToDo: Comment
     loop {
         let event = read().unwrap();
         match event {
             Event::Key(key_event) => {
                 match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                    (KeyCode::Char('c'), KeyModifiers::CONTROL) |
+                    (KeyCode::Char('q'), KeyModifiers::NONE) => {
                         break;
                     },
                     _ => {},
@@ -66,24 +80,27 @@ fn main() {
             Event::Mouse(mouse_event) => {
                 match mouse_event.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
-                        let column = mouse_event.column;
                         let row = mouse_event.row;
-                        // ToDo : create a macro to toggle a bools value
-                        // ToDo : do something for this repeatative use of into()
-                        if cells[column as usize][row as usize] {
-                            cells[column as usize][row as usize] = false;
-                            queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR));
-                        } else {
-                            cells[column as usize][row as usize] = true;
-                            queue!(stdout,SetBackgroundColor(CELL_COLOR));
+                        if row == 0 || row == terminal_height - 1 {}
+                        else {
+                            let column = mouse_event.column;
+                            // ToDo : create a macro to toggle a bools value
+                            // ToDo : do something for this repeatative use of into()
+                            if cells[column as usize][row as usize] {
+                                cells[column as usize][row as usize] = false;
+                                queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR));
+                            } else {
+                                cells[column as usize][row as usize] = true;
+                                queue!(stdout,SetBackgroundColor(CELL_COLOR));
+                            }
+                            queue!(
+                                stdout,
+                                cursor::MoveTo(column, row),
+                                Print(' '),
+                                cursor::MoveTo(0, 0),
+                            );
+                            stdout.flush();
                         }
-                        queue!(
-                            stdout,
-                            cursor::MoveTo(column, row),
-                            Print(' '),
-                            cursor::MoveTo(0, 0),
-                        );
-                        stdout.flush();
                     },
                     _ => {}
                 }
