@@ -38,6 +38,7 @@ fn main() {
     // ToDo: Create two variables with different types to avoid coversion
     let mut terminal_width = size().unwrap().0;
     let mut terminal_height = size().unwrap().1;
+    let mut game_is_paused = true;
 
     // Create a matrix to represent the terminal sheet
     // rows of cells
@@ -66,7 +67,7 @@ fn main() {
     queue!(
         stdout,
         cursor::MoveTo(0, terminal_height - 1),
-        Print("q: quit"),
+        Print("q: quit    p: pause"),
     );
     stdout.flush();
 
@@ -81,6 +82,9 @@ fn main() {
                         (KeyCode::Char('c'), KeyModifiers::CONTROL) |
                         (KeyCode::Char('q'), KeyModifiers::NONE) => {
                             break;
+                        },
+                        (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                            game_is_paused = !game_is_paused;
                         },
                         _ => {},
                     }
@@ -115,6 +119,11 @@ fn main() {
                 }
                 _ => {},
             }
+        }
+
+        // Check if game is paused
+        if game_is_paused {
+            continue;
         }
 
         // Generate next generation cells
@@ -155,7 +164,6 @@ fn main() {
         cells = next_gen_cells.clone();
         
         // Print cells
-        queue!(stdout, SetBackgroundColor(CELL_COLOR));
         for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
             for column_index in 0_usize..(terminal_width - 1).into() {
                 if cells[row_index][column_index] {
