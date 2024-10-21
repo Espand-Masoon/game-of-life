@@ -128,7 +128,7 @@ fn main() {
 
         // Generate next generation cells
         for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
-            for column_index in 0_usize..(terminal_width - 1).into() {
+            for column_index in 0_usize..(terminal_width).into() {
                 let mut true_neighbors: u8 = 0;
                 let neighbors_differences: [(isize, isize); 8] = 
                     [(-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)];
@@ -151,12 +151,15 @@ fn main() {
                     0..=1 => {
                         next_gen_cells[row_index][column_index] = false;
                     },
-                    2 => {},
+                    2 => {
+                        next_gen_cells[row_index][column_index] = 
+                            cells[row_index][column_index];
+                    },
                     3 => {
                         next_gen_cells[row_index][column_index] = true;
                     },
                     _ => {
-                        next_gen_cells[row_index][column_index] = true;
+                        next_gen_cells[row_index][column_index] = false;
                     },
                 }
             }
@@ -165,7 +168,7 @@ fn main() {
         
         // Print cells
         for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
-            for column_index in 0_usize..(terminal_width - 1).into() {
+            for column_index in 0_usize..(terminal_width).into() {
                 if cells[row_index][column_index] {
                     queue!(stdout, SetBackgroundColor(CELL_COLOR));
                 } else {
