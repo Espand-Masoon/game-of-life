@@ -22,6 +22,7 @@ use crossterm::style::SetBackgroundColor;
 use crossterm::style::Color;
 use crossterm::style::Print;
 use crossterm::queue;
+use crossterm::execute;
 use crossterm::cursor;
 
 fn main() {
@@ -84,6 +85,11 @@ fn main() {
                             break;
                         },
                         (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                            if game_is_paused {
+                                execute!(stdout, DisableMouseCapture);
+                            } else {
+                                execute!(stdout, EnableMouseCapture);
+                            }
                             game_is_paused = !game_is_paused;
                         },
                         _ => {},
