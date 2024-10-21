@@ -1,3 +1,6 @@
+mod printer;
+use printer::{print_generation, print_population, print_top_ribbon};
+
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
@@ -40,6 +43,8 @@ fn main() {
     let mut terminal_width = size().unwrap().0;
     let mut terminal_height = size().unwrap().1;
     let mut game_is_paused = true;
+    let mut generation: usize = 0;
+    let mut population: usize = 0;
 
     // Create a matrix to represent the terminal sheet
     // rows of cells
@@ -72,6 +77,8 @@ fn main() {
     );
     stdout.flush();
 
+    // Print top ribbon
+    print_top_ribbon(&mut stdout, generation, population);
 
     // ToDo: Comment
     loop {
@@ -106,18 +113,20 @@ fn main() {
                                 // ToDo : do something for this repeatative use of into()
                                 if cells[row as usize][column as usize] {
                                     cells[row as usize][column as usize] = false;
+                                    population -= 1;
                                     queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR));
                                 } else {
                                     cells[row as usize][column as usize] = true;
+                                    population += 1;
                                     queue!(stdout,SetBackgroundColor(CELL_COLOR));
                                 }
                                 queue!(
                                     stdout,
                                     cursor::MoveTo(column, row),
                                     Print(' '),
-                                    cursor::MoveTo(0, 0),
                                 );
                                 stdout.flush();
+                                print_population(&mut stdout, population);
                             }
                         },
                         _ => {}
@@ -133,6 +142,7 @@ fn main() {
         }
 
         // Generate next generation cells
+        next_gen_cells = cells.clone();
         for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
             for column_index in 0_usize..(terminal_width).into() {
                 let mut true_neighbors: u8 = 0;
@@ -153,24 +163,25 @@ fn main() {
                         }
                     }
                 }
-                match true_neighbors {
-                    0..=1 => {
+                match (true_neighbors, cells[row_index][column_index]) {
+                    (0..=1, true) => {
                         next_gen_cells[row_index][column_index] = false;
+                        population -= 1;
                     },
-                    2 => {
-                        next_gen_cells[row_index][column_index] = 
-                            cells[row_index][column_index];
-                    },
-                    3 => {
+                    (3, false) => {
                         next_gen_cells[row_index][column_index] = true;
+                        population += 1;
                     },
-                    _ => {
+                    (4.., true) => {
                         next_gen_cells[row_index][column_index] = false;
+                        population -= 1;
                     },
+                    (_, _) => {},
                 }
             }
         }
         cells = next_gen_cells.clone();
+        generation += 1;
         
         // Print cells
         for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
@@ -187,6 +198,10 @@ fn main() {
                 );
             }
         }
+
+        // Print top ribbon
+        print_top_ribbon(&mut stdout, generation, population);
+        
     }
 
     // Restore terminal settings to default
