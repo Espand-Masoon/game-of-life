@@ -26,7 +26,7 @@ pub fn print_population<T: Display>(stdout: &mut Stdout, population: T) {
         stdout,
         cursor::MoveTo(0, 1),
         SetBackgroundColor(BACKGROUND_COLOR),
-        Print(format!("Population: {}", population)),
+        Print(format!("Population: {:<10}", population)),
     );
     stdout.flush();
 }
