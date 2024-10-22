@@ -16,7 +16,7 @@ pub fn print_generation<T: Display>(stdout: &mut Stdout, generation: T) {
         stdout,
         cursor::MoveTo(0, 0),
         SetBackgroundColor(BACKGROUND_COLOR),
-        Print(format!("Generation: {}", generation)),
+        Print(format!("{:<25}", format!("Generation: {:<13}", generation))),
     );
     stdout.flush();
 }
@@ -26,12 +26,17 @@ pub fn print_population<T: Display>(stdout: &mut Stdout, population: T) {
         stdout,
         cursor::MoveTo(0, 1),
         SetBackgroundColor(BACKGROUND_COLOR),
-        Print(format!("Population: {:<10}", population)),
+        Print(format!("{:<25}", format!("Population: {:<13}", population))),
     );
     stdout.flush();
 }
 
-pub fn print_top_ribbon<T: Display>(stdout: &mut Stdout, generation: T, population: T) {
-    print_generation(stdout, generation);
-    print_population(stdout, population);
+pub fn print_speed(stdout: &mut Stdout, delay: u8) {
+    queue!(
+        stdout,
+        cursor::MoveTo(26, 0),
+        SetBackgroundColor(BACKGROUND_COLOR),
+        Print(format!("Speed: {:<10}", 100 - delay)),
+    );
+    stdout.flush();
 }

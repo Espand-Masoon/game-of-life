@@ -1,9 +1,10 @@
 mod printer;
-use printer::{print_generation, print_population, print_top_ribbon};
+use printer::{print_generation, print_population, print_speed};
 
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
+use std::time::Instant;
 use crossterm::event::poll;
 use crossterm::event::read;
 use crossterm::event::EnableMouseCapture;
@@ -45,6 +46,7 @@ fn main() {
     let mut game_is_paused = true;
     let mut generation: usize = 0;
     let mut population: usize = 0;
+    let mut delay: u8 = 50;
 
     // Create a matrix to represent the terminal sheet
     // rows of cells
@@ -73,17 +75,20 @@ fn main() {
     queue!(
         stdout,
         cursor::MoveTo(0, terminal_height - 1),
-        Print("q: quit    p: pause"),
+        Print("q: quit    p: pause    speed: +-"),
     );
     stdout.flush();
 
     // Print top ribbon
-    print_top_ribbon(&mut stdout, generation, population);
+    print_generation(&mut stdout, generation);
+    print_population(&mut stdout, population);
+    print_speed(&mut stdout, delay);
 
     // ToDo: Comment
+    let mut start = Instant::now();
     loop {
-        // Wait for an event
-        if poll(Duration::from_millis(1000)).unwrap() {
+        // Read an event
+        if poll(Duration::from_millis(5)).unwrap() {
             match read().unwrap() {
                 Event::Key(key_event) => {
                     match (key_event.code, key_event.modifiers) {
@@ -98,6 +103,18 @@ fn main() {
                                 execute!(stdout, EnableMouseCapture);
                             }
                             game_is_paused = !game_is_paused;
+                        },
+                        (KeyCode::Char('+'), KeyModifiers::NONE) => {
+                            if delay > 0 {
+                                delay -= 1;
+                                print_speed(&mut stdout, delay);
+                            }
+                        },
+                        (KeyCode::Char('-'), KeyModifiers::NONE) => {
+                            if delay < 99 {
+                                delay += 1;
+                                print_speed(&mut stdout, delay);
+                            }
                         },
                         _ => {},
                     }
@@ -137,7 +154,7 @@ fn main() {
         }
 
         // Check if game is paused
-        if game_is_paused {
+        if game_is_paused || start.elapsed() < Duration::from_millis(8 * (delay as u64) + 250) {
             continue;
         }
 
@@ -200,8 +217,11 @@ fn main() {
         }
 
         // Print top ribbon
-        print_top_ribbon(&mut stdout, generation, population);
-        
+        print_generation(&mut stdout, generation);
+        print_population(&mut stdout, population);
+
+        // Reset the instant
+        start = Instant::now();
     }
 
     // Restore terminal settings to default
