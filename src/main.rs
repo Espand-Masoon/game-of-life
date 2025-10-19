@@ -5,10 +5,11 @@ use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
 use std::time::Instant;
+use std::ops::Index;
+use std::ops::IndexMut;
 use crossterm::event::poll;
 use crossterm::event::read;
 use crossterm::event::EnableMouseCapture;
-use crossterm::event::KeyEvent;
 use crossterm::event::Event;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::KeyCode;
@@ -17,7 +18,7 @@ use crossterm::event::MouseEventKind;
 use crossterm::event::MouseButton;
 use crossterm::terminal::enable_raw_mode;
 use crossterm::terminal::disable_raw_mode;
-use crossterm::terminal::size;
+use crossterm::terminal;
 use crossterm::terminal::Clear;
 use crossterm::terminal::ClearType;
 use crossterm::terminal::EnterAlternateScreen;
@@ -29,6 +30,126 @@ use crossterm::queue;
 use crossterm::execute;
 use crossterm::cursor;
 
+// Consider creating an Index struct with width and height fields
+
+// store all the rows in one vec contiguously
+//
+// ------------------------> +width
+// |
+// |
+// |
+// |
+// |
+// |
+// +
+// heigth
+#[derive(Clone)]
+struct Grid {
+    width: u16,
+    height: u16,
+    cells: Vec<bool>,
+    population: usize,
+    generation: usize
+}
+
+impl Grid {
+    fn new(width: u16, height: u16) -> Self {
+        Grid {
+            width,
+            height,
+            cells: vec![false; (width * height) as usize],
+            // Todo: Check if population or generation aren't going out of bound
+            population: 0,
+            generation: 0,
+        }
+    }
+
+    fn next_generation(&mut self) {
+        let mut should_die_indices = Vec::<(u16, u16)>::new();
+        let mut should_birth_indices = Vec::<(u16, u16)>::new();
+
+        for width in 0..self.width {
+            for height in 0..self.height {
+                let mut alive_neighbors_count = 0_u8;
+                let neighbor_offsets: [(isize, isize); 8] =
+                [(-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)];
+                for neighbor_offset in neighbor_offsets {
+                    let neighbor_width = width as isize + neighbor_offset.0;
+                    let neighbor_height = height as isize + neighbor_offset.1;
+                    if neighbor_width < 0 || neighbor_height < 0 {
+                        continue;
+                    }
+                    // Todo: Check for the numeric type and make sure no overflow happens
+                    if let Some(is_alive) = self.get(neighbor_width as u16, neighbor_height as u16) {
+                        if *is_alive {
+                            alive_neighbors_count = alive_neighbors_count + 1;
+                        }
+                    }
+                }
+                if self[(width, height)] {
+                    if alive_neighbors_count < 2 || alive_neighbors_count > 3 {
+                        should_die_indices.push((width, height));
+                    }
+                } else {
+                    if alive_neighbors_count == 3 {
+                        should_birth_indices.push((width, height));
+                    }
+                }
+            }
+        }
+
+        // fn count_alive_neighbors(&self, width, height) -> u8 {
+        //     
+        // }
+
+        self.population = self.population + should_birth_indices.len() - should_die_indices.len();
+
+        for index in should_die_indices {
+            self[index] = false;
+        }
+
+        for index in should_birth_indices {
+            self[index] = true;
+        }
+
+        self.generation = self.generation + 1;
+    }
+
+    fn get(&self, width: u16, height: u16) -> Option<&bool> {
+        // Return None if the index is out of bound
+        if width >= self.width || height >= self.height {
+            return None;
+        }
+
+        let width = width as usize;
+        let height = height as usize;
+        let grid_width = self.width as usize;
+        // Todo: Check if the number doesn't go out of bound of usize
+        self.cells.get(height * grid_width + width)
+    }
+}
+
+impl Index<(u16, u16)> for Grid {
+    type Output = bool;
+
+    fn index(self: &Self, index: (u16, u16)) -> &Self::Output {
+        let width = index.0 as usize;
+        let height = index.1 as usize;
+        let grid_width = self.width as usize;
+        &self.cells[height * grid_width + width]
+    }
+}
+
+impl IndexMut<(u16, u16)> for Grid {
+    fn index_mut(self: &mut Self, index: (u16, u16)) -> &mut Self::Output {
+        let width = index.0 as usize;
+        let height = index.1 as usize;
+        let grid_width = self.width as usize;
+        &mut self.cells[height * grid_width + width]
+    }
+}
+
+
 fn main() {
     // ToDo : overwrite the size() function to always return usize
     // so you don't have to convert it everywhere you need it
@@ -38,23 +159,16 @@ fn main() {
     const BACKGROUND_COLOR: Color = Color::Black;
     const TOP_MARGIN: u16 = 2;
     const BOTTOM_MARGIN: u16 = 1;
+    const VERTICAL_MARGIN: u16 = TOP_MARGIN + BOTTOM_MARGIN;
 
     // Global variables
-    // ToDo: Create two variables with different types to avoid coversion
-    let mut terminal_width = size().unwrap().0;
-    let mut terminal_height = size().unwrap().1;
+    let mut terminal_width: u16 = terminal::size().unwrap().0;
+    let mut terminal_height: u16 = terminal::size().unwrap().1;
     let mut game_is_paused = true;
-    let mut generation: usize = 0;
-    let mut population: usize = 0;
     let mut delay: u8 = 50;
 
-    // Create a matrix to represent the terminal sheet
-    // rows of cells
-    let mut cells: Vec<Vec<bool>> = vec![
-        vec![false; terminal_width.into()];
-        terminal_height.into()
-    ];
-    let mut next_gen_cells = cells.clone();
+    // Create a grid to represent the terminal sheet
+    let mut grid = Grid::new(terminal_width, terminal_height - VERTICAL_MARGIN);
 
     // ToDo
     let mut stdout = stdout();
@@ -80,8 +194,8 @@ fn main() {
     stdout.flush();
 
     // Print top ribbon
-    print_generation(&mut stdout, generation);
-    print_population(&mut stdout, population);
+    print_generation(&mut stdout, grid.generation);
+    print_population(&mut stdout, grid.population);
     print_speed(&mut stdout, delay);
 
     // ToDo: Comment
@@ -122,33 +236,35 @@ fn main() {
                 Event::Mouse(mouse_event) => {
                     match mouse_event.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
-                            let row = mouse_event.row;
-                            if row < TOP_MARGIN || row >= terminal_height - BOTTOM_MARGIN {}
-                            else {
-                                let column = mouse_event.column;
+                            let height = mouse_event.row;
+                            if !(height < TOP_MARGIN || height >= terminal_height - BOTTOM_MARGIN) {
+                                let width = mouse_event.column;
                                 // ToDo : create a macro to toggle a bools value
                                 // ToDo : do something for this repeatative use of into()
-                                if cells[row as usize][column as usize] {
-                                    cells[row as usize][column as usize] = false;
-                                    population -= 1;
+                                if grid[(width, height - TOP_MARGIN)] {
+                                    grid[(width, height - TOP_MARGIN)] = false;
+                                    grid.population -= 1;
                                     queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR));
                                 } else {
-                                    cells[row as usize][column as usize] = true;
-                                    population += 1;
+                                    grid[(width, height - TOP_MARGIN)] = true;
+                                    grid.population += 1;
                                     queue!(stdout,SetBackgroundColor(CELL_COLOR));
                                 }
                                 queue!(
                                     stdout,
-                                    cursor::MoveTo(column, row),
+                                    cursor::MoveTo(width, height),
                                     Print(' '),
                                 );
                                 stdout.flush();
-                                print_population(&mut stdout, population);
+                                print_population(&mut stdout, grid.population);
                             }
                         },
                         _ => {}
                     }
-                }
+                },
+                // Event::Resize(columns, rows) => {
+                //     for row in cells
+                // },
                 _ => {},
             }
         }
@@ -158,67 +274,28 @@ fn main() {
             continue;
         }
 
-        // Generate next generation cells
-        next_gen_cells = cells.clone();
-        for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
-            for column_index in 0_usize..(terminal_width).into() {
-                let mut true_neighbors: u8 = 0;
-                let neighbors_differences: [(isize, isize); 8] = 
-                    [(-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)];
-                for &(x, y) in neighbors_differences.iter() {
-                    if row_index as isize + y >= 0 || column_index as isize + x >= 0 {
-                        match cells.get((row_index as isize + y) as usize) {
-                            Some(row) => {
-                                match row.get((column_index as isize + x) as usize) {
-                                    Some(&cell) => {
-                                        if cell {true_neighbors += 1;}
-                                    },
-                                    None => {},
-                                }
-                            },
-                            None => {},
-                        }
-                    }
-                }
-                match (true_neighbors, cells[row_index][column_index]) {
-                    (0..=1, true) => {
-                        next_gen_cells[row_index][column_index] = false;
-                        population -= 1;
-                    },
-                    (3, false) => {
-                        next_gen_cells[row_index][column_index] = true;
-                        population += 1;
-                    },
-                    (4.., true) => {
-                        next_gen_cells[row_index][column_index] = false;
-                        population -= 1;
-                    },
-                    (_, _) => {},
-                }
-            }
-        }
-        cells = next_gen_cells.clone();
-        generation += 1;
-        
+        // Generate next generation grid
+        grid.next_generation();
+
         // Print cells
-        for row_index in (TOP_MARGIN as usize)..(terminal_height - BOTTOM_MARGIN).into() {
-            for column_index in 0_usize..(terminal_width).into() {
-                if cells[row_index][column_index] {
+        for width in 0..grid.width {
+            for height in 0..grid.height {
+                if grid[(width, height)] {
                     queue!(stdout, SetBackgroundColor(CELL_COLOR));
                 } else {
                     queue!(stdout, SetBackgroundColor(BACKGROUND_COLOR));
                 }
                 queue!(
                     stdout,
-                    cursor::MoveTo(column_index as u16, row_index as u16),
+                    cursor::MoveTo(width, height + TOP_MARGIN),
                     Print(' '),
                 );
             }
         }
 
         // Print top ribbon
-        print_generation(&mut stdout, generation);
-        print_population(&mut stdout, population);
+        print_generation(&mut stdout, grid.generation);
+        print_population(&mut stdout, grid.population);
 
         // Reset the instant
         start = Instant::now();
