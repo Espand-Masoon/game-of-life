@@ -4,6 +4,7 @@ use printer::{print_generation, print_population, print_speed};
 mod grid;
 use grid::Grid;
 
+use std::io;
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
@@ -32,9 +33,13 @@ use crossterm::execute;
 use crossterm::cursor;
 
 fn main() {
-    // ToDo : overwrite the size() function to always return usize
-    // so you don't have to convert it everywhere you need it
+    match run() {
+        Ok(()) => (),
+        Err(error) => {eprintln!("{error}");},
+    }
+}
 
+fn run() -> Result<(), std::io::Error> {
     // Constants
     const CELL_COLOR: Color = Color::Yellow;
     const BACKGROUND_COLOR: Color = Color::Black;
@@ -43,19 +48,19 @@ fn main() {
     const VERTICAL_MARGIN: u16 = TOP_MARGIN + BOTTOM_MARGIN;
 
     // Global variables
-    let mut terminal_width: u16 = terminal::size().unwrap().0;
-    let mut terminal_height: u16 = terminal::size().unwrap().1;
+    let terminal_width: u16 = terminal::size().unwrap().0;
+    let terminal_height: u16 = terminal::size().unwrap().1;
     let mut game_is_paused = true;
     let mut delay: u8 = 50;
 
     // Create a grid to represent the terminal sheet
-    let mut grid = grid::Grid::new(terminal_width, terminal_height - VERTICAL_MARGIN);
+    let mut grid = Grid::new(terminal_width, terminal_height - VERTICAL_MARGIN);
 
     // ToDo
     let mut stdout = stdout();
 
     // Configure terminal settings for optimal display and usage
-    enable_raw_mode();
+    enable_raw_mode()?;
     queue!(
         stdout,
         EnterAlternateScreen,
@@ -63,21 +68,21 @@ fn main() {
         Clear(ClearType::All),
         EnableMouseCapture,
         cursor::Hide
-    );
-    stdout.flush();
+    )?;
+    stdout.flush()?;
 
     // Print help ribbon at bottom of pane
     queue!(
         stdout,
         cursor::MoveTo(0, terminal_height - 1),
         Print("q: quit    p: pause    speed: +-"),
-    );
-    stdout.flush();
+    )?;
+    stdout.flush()?;
 
     // Print top ribbon
-    print_generation(&mut stdout, grid.generation);
-    print_population(&mut stdout, grid.population);
-    print_speed(&mut stdout, delay);
+    print_generation(&mut stdout, grid.generation)?;
+    print_population(&mut stdout, grid.population)?;
+    print_speed(&mut stdout, delay)?;
 
     // ToDo: Comment
     let mut start = Instant::now();
@@ -93,22 +98,22 @@ fn main() {
                         },
                         (KeyCode::Char('p'), KeyModifiers::NONE) => {
                             if game_is_paused {
-                                execute!(stdout, DisableMouseCapture);
+                                execute!(stdout, DisableMouseCapture)?;
                             } else {
-                                execute!(stdout, EnableMouseCapture);
+                                execute!(stdout, EnableMouseCapture)?;
                             }
                             game_is_paused = !game_is_paused;
                         },
                         (KeyCode::Char('+'), KeyModifiers::NONE) => {
                             if delay > 0 {
                                 delay -= 1;
-                                print_speed(&mut stdout, delay);
+                                print_speed(&mut stdout, delay)?;
                             }
                         },
                         (KeyCode::Char('-'), KeyModifiers::NONE) => {
                             if delay < 99 {
                                 delay += 1;
-                                print_speed(&mut stdout, delay);
+                                print_speed(&mut stdout, delay)?;
                             }
                         },
                         _ => {},
@@ -125,19 +130,19 @@ fn main() {
                                 if grid[(width, height - TOP_MARGIN)] {
                                     grid[(width, height - TOP_MARGIN)] = false;
                                     grid.population -= 1;
-                                    queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR));
+                                    queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR))?;
                                 } else {
                                     grid[(width, height - TOP_MARGIN)] = true;
                                     grid.population += 1;
-                                    queue!(stdout,SetBackgroundColor(CELL_COLOR));
+                                    queue!(stdout,SetBackgroundColor(CELL_COLOR))?;
                                 }
                                 queue!(
                                     stdout,
                                     cursor::MoveTo(width, height),
                                     Print(' '),
-                                );
-                                stdout.flush();
-                                print_population(&mut stdout, grid.population);
+                                )?;
+                                stdout.flush()?;
+                                print_population(&mut stdout, grid.population)?;
                             }
                         },
                         _ => {}
@@ -162,28 +167,33 @@ fn main() {
         for width in 0..grid.width {
             for height in 0..grid.height {
                 if grid[(width, height)] {
-                    queue!(stdout, SetBackgroundColor(CELL_COLOR));
+                    queue!(stdout, SetBackgroundColor(CELL_COLOR))?;
                 } else {
-                    queue!(stdout, SetBackgroundColor(BACKGROUND_COLOR));
+                    queue!(stdout, SetBackgroundColor(BACKGROUND_COLOR))?;
                 }
                 queue!(
                     stdout,
                     cursor::MoveTo(width, height + TOP_MARGIN),
                     Print(' '),
-                );
+                )?;
             }
         }
 
         // Print top ribbon
-        print_generation(&mut stdout, grid.generation);
-        print_population(&mut stdout, grid.population);
+        print_generation(&mut stdout, grid.generation)?;
+        print_population(&mut stdout, grid.population)?;
 
         // Reset the instant
         start = Instant::now();
     }
+    quit(stdout)?;
+    Ok(())
+}
 
+fn quit(mut stdout: io::Stdout) -> Result<(), io::Error> {
     // Restore terminal settings to default
-    disable_raw_mode();
-    queue!(stdout, DisableMouseCapture, cursor::Show, LeaveAlternateScreen);
-    stdout.flush();
+    disable_raw_mode()?;
+    queue!(stdout, DisableMouseCapture, cursor::Show, LeaveAlternateScreen)?;
+    stdout.flush()?;
+    Ok(())
 }
