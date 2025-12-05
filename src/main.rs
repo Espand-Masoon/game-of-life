@@ -4,38 +4,44 @@ use printer::{print_generation, print_population, print_speed};
 mod grid;
 use grid::Grid;
 
+use crossterm::cursor;
+use crossterm::event::poll;
+use crossterm::event::read;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableMouseCapture;
+use crossterm::event::Event;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyModifiers;
+use crossterm::event::MouseButton;
+use crossterm::event::MouseEventKind;
+use crossterm::execute;
+use crossterm::queue;
+use crossterm::style::Color;
+use crossterm::style::Print;
+use crossterm::style::SetBackgroundColor;
+use crossterm::terminal;
+use crossterm::terminal::disable_raw_mode;
+use crossterm::terminal::enable_raw_mode;
+use crossterm::terminal::Clear;
+use crossterm::terminal::ClearType;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::terminal::LeaveAlternateScreen;
 use std::io;
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
 use std::time::Instant;
-use crossterm::event::poll;
-use crossterm::event::read;
-use crossterm::event::EnableMouseCapture;
-use crossterm::event::Event;
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::KeyCode;
-use crossterm::event::KeyModifiers;
-use crossterm::event::MouseEventKind;
-use crossterm::event::MouseButton;
-use crossterm::terminal::enable_raw_mode;
-use crossterm::terminal::disable_raw_mode;
-use crossterm::terminal;
-use crossterm::terminal::Clear;
-use crossterm::terminal::ClearType;
-use crossterm::terminal::EnterAlternateScreen;
-use crossterm::terminal::LeaveAlternateScreen;
-use crossterm::style::SetBackgroundColor;
-use crossterm::style::Color;
-use crossterm::style::Print;
-use crossterm::queue;
-use crossterm::execute;
-use crossterm::cursor;
+
+use crate::printer::print_cells;
+use crate::printer::print_ribbon_bottom;
+use crate::printer::print_ribbon_top;
 
 fn main() {
     match run() {
         Ok(()) => (),
-        Err(error) => {eprintln!("{error}");},
+        Err(error) => {
+            eprintln!("{error}");
+        }
     }
 }
 
@@ -48,8 +54,8 @@ fn run() -> Result<(), std::io::Error> {
     const VERTICAL_MARGIN: u16 = TOP_MARGIN + BOTTOM_MARGIN;
 
     // Global variables
-    let terminal_width: u16 = terminal::size().unwrap().0;
-    let terminal_height: u16 = terminal::size().unwrap().1;
+    let mut terminal_width: u16 = terminal::size().unwrap().0;
+    let mut terminal_height: u16 = terminal::size().unwrap().1;
     let mut game_is_paused = true;
     let mut delay: u8 = 50;
 
@@ -72,86 +78,75 @@ fn run() -> Result<(), std::io::Error> {
     stdout.flush()?;
 
     // Print help ribbon at bottom of pane
-    queue!(
-        stdout,
-        cursor::MoveTo(0, terminal_height - 1),
-        Print("q: quit    p: pause    speed: +-"),
-    )?;
-    stdout.flush()?;
+    print_ribbon_bottom(&mut stdout, terminal_height)?;
 
     // Print top ribbon
-    print_generation(&mut stdout, grid.generation)?;
-    print_population(&mut stdout, grid.population)?;
-    print_speed(&mut stdout, delay)?;
+    print_ribbon_top(&mut stdout, grid.generation, delay, grid.population)?;
 
-    // ToDo: Comment
+    // TODO: Comment
     let mut start = Instant::now();
     loop {
         // Read an event
         if poll(Duration::from_millis(5)).unwrap() {
             match read().unwrap() {
-                Event::Key(key_event) => {
-                    match (key_event.code, key_event.modifiers) {
-                        (KeyCode::Char('c'), KeyModifiers::CONTROL) |
-                        (KeyCode::Char('q'), KeyModifiers::NONE) => {
-                            break;
-                        },
-                        (KeyCode::Char('p'), KeyModifiers::NONE) => {
-                            if game_is_paused {
-                                execute!(stdout, DisableMouseCapture)?;
+                Event::Key(key_event) => match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Char('c'), KeyModifiers::CONTROL)
+                    | (KeyCode::Char('q'), KeyModifiers::NONE) => {
+                        break;
+                    }
+                    (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                        if game_is_paused {
+                            execute!(stdout, DisableMouseCapture)?;
+                        } else {
+                            execute!(stdout, EnableMouseCapture)?;
+                        }
+                        game_is_paused = !game_is_paused;
+                    }
+                    (KeyCode::Char('+'), KeyModifiers::NONE) => {
+                        if delay > 0 {
+                            delay -= 1;
+                            print_speed(&mut stdout, delay)?;
+                        }
+                    }
+                    (KeyCode::Char('-'), KeyModifiers::NONE) => {
+                        if delay < 99 {
+                            delay += 1;
+                            print_speed(&mut stdout, delay)?;
+                        }
+                    }
+                    _ => {}
+                },
+                Event::Mouse(mouse_event) => match mouse_event.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let height = mouse_event.row;
+                        if !(height < TOP_MARGIN || height >= terminal_height - BOTTOM_MARGIN) {
+                            let width = mouse_event.column;
+
+                            if grid[(width, height - TOP_MARGIN)] {
+                                grid.toggle_cell((width, height - TOP_MARGIN));
+                                queue!(stdout, SetBackgroundColor(BACKGROUND_COLOR))?;
                             } else {
-                                execute!(stdout, EnableMouseCapture)?;
+                                grid.toggle_cell((width, height - TOP_MARGIN));
+                                queue!(stdout, SetBackgroundColor(CELL_COLOR))?;
                             }
-                            game_is_paused = !game_is_paused;
-                        },
-                        (KeyCode::Char('+'), KeyModifiers::NONE) => {
-                            if delay > 0 {
-                                delay -= 1;
-                                print_speed(&mut stdout, delay)?;
-                            }
-                        },
-                        (KeyCode::Char('-'), KeyModifiers::NONE) => {
-                            if delay < 99 {
-                                delay += 1;
-                                print_speed(&mut stdout, delay)?;
-                            }
-                        },
-                        _ => {},
+                            queue!(stdout, cursor::MoveTo(width, height), Print(' '),)?;
+                            stdout.flush()?;
+                            print_population(&mut stdout, grid.population)?;
+                        }
                     }
+                    _ => {}
                 },
-                Event::Mouse(mouse_event) => {
-                    match mouse_event.kind {
-                        MouseEventKind::Down(MouseButton::Left) => {
-                            let height = mouse_event.row;
-                            if !(height < TOP_MARGIN || height >= terminal_height - BOTTOM_MARGIN) {
-                                let width = mouse_event.column;
-                                // ToDo : create a macro to toggle a bools value
-                                // ToDo : do something for this repeatative use of into()
-                                if grid[(width, height - TOP_MARGIN)] {
-                                    grid[(width, height - TOP_MARGIN)] = false;
-                                    grid.population -= 1;
-                                    queue!(stdout,SetBackgroundColor(BACKGROUND_COLOR))?;
-                                } else {
-                                    grid[(width, height - TOP_MARGIN)] = true;
-                                    grid.population += 1;
-                                    queue!(stdout,SetBackgroundColor(CELL_COLOR))?;
-                                }
-                                queue!(
-                                    stdout,
-                                    cursor::MoveTo(width, height),
-                                    Print(' '),
-                                )?;
-                                stdout.flush()?;
-                                print_population(&mut stdout, grid.population)?;
-                            }
-                        },
-                        _ => {}
+                Event::Resize(columns, rows) => {
+                    terminal_width = terminal::size().unwrap().0;
+                    terminal_height = terminal::size().unwrap().1;
+                    grid.resize(columns, rows - VERTICAL_MARGIN);
+                    if game_is_paused {
+                        print_cells(&mut stdout, &grid)?;
+                        print_ribbon_top(&mut stdout, grid.generation, delay, grid.population)?;
+                        print_ribbon_bottom(&mut stdout, terminal_height)?;
                     }
-                },
-                // Event::Resize(columns, rows) => {
-                //     for row in cells
-                // },
-                _ => {},
+                }
+                _ => {}
             }
         }
 
@@ -164,20 +159,7 @@ fn run() -> Result<(), std::io::Error> {
         grid.next_generation();
 
         // Print cells
-        for width in 0..grid.width {
-            for height in 0..grid.height {
-                if grid[(width, height)] {
-                    queue!(stdout, SetBackgroundColor(CELL_COLOR))?;
-                } else {
-                    queue!(stdout, SetBackgroundColor(BACKGROUND_COLOR))?;
-                }
-                queue!(
-                    stdout,
-                    cursor::MoveTo(width, height + TOP_MARGIN),
-                    Print(' '),
-                )?;
-            }
-        }
+        print_cells(&mut stdout, &grid)?;
 
         // Print top ribbon
         print_generation(&mut stdout, grid.generation)?;
@@ -193,7 +175,12 @@ fn run() -> Result<(), std::io::Error> {
 fn quit(mut stdout: io::Stdout) -> Result<(), io::Error> {
     // Restore terminal settings to default
     disable_raw_mode()?;
-    queue!(stdout, DisableMouseCapture, cursor::Show, LeaveAlternateScreen)?;
+    queue!(
+        stdout,
+        DisableMouseCapture,
+        cursor::Show,
+        LeaveAlternateScreen
+    )?;
     stdout.flush()?;
     Ok(())
 }

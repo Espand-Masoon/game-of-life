@@ -1,5 +1,9 @@
 use std::ops::{Index, IndexMut};
 
+mod resize;
+
+use resize::Direction;
+
 // Consider creating an Index struct with width and height fields
 
 // store all the rows in one vec contiguously
@@ -13,13 +17,19 @@ use std::ops::{Index, IndexMut};
 // |
 // +
 // heigth
-#[derive(Clone)]
 pub struct Grid {
     pub width: u16,
     pub height: u16,
     cells: Vec<bool>,
     pub population: usize,
-    pub generation: usize
+    pub generation: usize,
+
+    // These flags is used to prevent resizing the terminal only from one direction
+    // when the resize amount is an odd number.
+    width_append_direction: Direction,
+    height_append_direction: Direction,
+    width_remove_direction: Direction,
+    height_remove_direction: Direction,
 }
 
 impl Grid {
@@ -31,6 +41,10 @@ impl Grid {
             // Todo: Check if population or generation aren't going out of bound
             population: 0,
             generation: 0,
+            width_append_direction: Direction::Right,
+            height_append_direction: Direction::Bottom,
+            width_remove_direction: Direction::Right,
+            height_remove_direction: Direction::Bottom,
         }
     }
 
@@ -71,8 +85,16 @@ impl Grid {
 
     fn count_alive_neighbors(&self, (width, height): (u16, u16)) -> u8 {
         let mut alive_neighbors_count = 0_u8;
-        let neighbor_offsets: [(isize, isize); 8] =
-        [(-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)];
+        let neighbor_offsets: [(isize, isize); 8] = [
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+            (1, 0),
+            (1, -1),
+            (0, -1),
+        ];
         for neighbor_offset in neighbor_offsets {
             let neighbor_width = width as isize + neighbor_offset.0;
             let neighbor_height = height as isize + neighbor_offset.1;
@@ -131,22 +153,25 @@ mod tests {
     #[test]
     fn alone_cells_should_die() {
         let mut grid = Grid::new(100, 100);
-        grid.toggle_cell((0,0));
-        grid.toggle_cell((5,5));
-        grid.toggle_cell((99,99));
-        grid.toggle_cell((0,50));
-        grid.toggle_cell((50,0));
+        grid.toggle_cell((0, 0));
+        grid.toggle_cell((5, 5));
+        grid.toggle_cell((99, 99));
+        grid.toggle_cell((0, 50));
+        grid.toggle_cell((50, 0));
 
         grid.next_generation();
 
         assert_eq!(grid.population, 0);
-        assert!(grid.cells == vec![false; 10000], "The grid cells are not as expected!");
+        assert!(
+            grid.cells == vec![false; 10000],
+            "The grid cells are not as expected!"
+        );
     }
 
     #[test]
     fn cells_with_one_neighbor_should_die() {
         let mut grid = Grid::new(100, 100);
-        let alive_cell_indices = [(0, 0), (0, 1), (5, 0), (5, 1),(98, 98), (99, 99)];
+        let alive_cell_indices = [(0, 0), (0, 1), (5, 0), (5, 1), (98, 98), (99, 99)];
         for cell_index in alive_cell_indices {
             grid.toggle_cell(cell_index);
         }
